@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pah-nfs
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+   - ReadWriteMany 
+  nfs: 
+    path: /nfs/pah
+    server: nfs.pharriso.demolab.local
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: nfs
+
