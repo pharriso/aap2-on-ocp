@@ -1,21 +1,48 @@
-apiVersion: automationcontroller.ansible.com/v1beta1
-kind: AutomationController
-metadata:
-  name: controller
-  namespace: ansible-automation-platform
-spec:
-  create_preload_data: true
-  route_tls_termination_mechanism: Edge
-  garbage_collect_secrets: false
-  loadbalancer_port: 80
-  image_pull_policy: IfNotPresent
-  projects_storage_size: 8Gi
-  task_privileged: false
-  projects_storage_access_mode: ReadWriteMany
-  projects_persistence: false
-  replicas: 1
-  admin_user: admin
-  loadbalancer_protocol: http
-  nodeport_port: 30080
-  service_type: ClusterIP
-  ingress_type: Route
+---
+
+- name: deploy controller on ocp
+  gather_facts: false
+  hosts: ignite.demolab.local
+  tasks:
+  - name: create namespace
+    redhat.openshift.k8s:
+      kubeconfig: "/opt/{{ ocp_name }}/conf/auth/kubeconfig"
+      name: "{{ ocp_namespace }}"
+      api_version: v1
+      kind: Namespace
+      state: present
+
+  - name: create secret for admin account
+    redhat.openshift.k8s:
+      state: present
+      kubeconfig: "/opt/{{ ocp_name }}/conf/auth/kubeconfig"
+      template: controller-secret.yml.j2
+
+  - name: deploy aap instance
+    redhat.openshift.k8s:
+      state: present
+      kubeconfig: "/opt/{{ ocp_name }}/conf/auth/kubeconfig"
+      template: aap_controller.yml.j2
+
+  - name: find the route
+    kubernetes.core.k8s_info:
+      kubeconfig: "/opt/{{ ocp_name }}/conf/auth/kubeconfig"
+      api_version: v1
+      kind: Route
+      namespace: "{{ ocp_namespace }}"
+    register: routes
+    until: routes.resources  | length >= 1
+    retries: 20
+    delay: 5
+
+  - name: check the controller health api
+    ansible.builtin.uri:
+      url: https://{{ routes.resources[0].spec.host }}/api/v2/ping
+    register: api_health
+    until: api_health.status == 200
+    retries: 60
+    delay: 5
+
+  - name: print route
+    debug:
+      msg: aap controller url - https://{{ routes.resources[0].spec.host }}
